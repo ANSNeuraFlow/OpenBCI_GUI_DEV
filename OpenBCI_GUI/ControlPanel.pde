@@ -198,7 +198,7 @@ class ControlPanel {
             drawStopInstructions = false;
 
             //Carefully draw certain boxes based on UI/UX flow... let each box handle what is drawn inside with localCp5 instances
-            if (eegDataSource == DATASOURCE_CYTON) {	//when data source is from OpenBCI
+            if (eegDataSource == DATASOURCE_CYTON) {  //when data source is from OpenBCI
                 interfaceBoxCyton.draw();
                 if (selectedProtocol != BoardProtocol.NONE) {
                     if (selectedProtocol == BoardProtocol.SERIAL) {
@@ -262,7 +262,7 @@ class ControlPanel {
             }
         }
 
-        //draw the box that tells you to stop the system in order to edit control settings
+        //draw the box that tells you to stop the system in https://github.com/OpenBCI/OpenBCI_GUI.gitorder to edit control settings
         if (drawStopInstructions) {
             pushStyle();
             fill(boxColor);
@@ -347,8 +347,8 @@ class ControlPanel {
 }; //end of ControlPanel class
 
 //==============================================================================//
-//                	BELOW ARE THE CLASSES FOR THE VARIOUS                       //
-//                	CONTROL PANEL BOXES (control widgets)                       //
+//                  BELOW ARE THE CLASSES FOR THE VARIOUS                       //
+//                  CONTROL PANEL BOXES (control widgets)                       //
 //==============================================================================//
 
 class DataSourceBox {
@@ -641,28 +641,70 @@ class ComPortBox {
         thread.start();
     }
 
-    private LinkedList<String> getCytonComPorts() {
-        final String[] names = {"FT231X USB UART", "VCP"};
-        final SerialPort[] comPorts = SerialPort.getCommPorts();
-        LinkedList<String> results = new LinkedList<String>();
-        for (SerialPort comPort : comPorts) {
-            for (String name : names) {
-                if (comPort.toString().startsWith(name)) {
-                    // on macos need to drop tty ports
-                    if (isMac() && comPort.getSystemPortName().startsWith("tty")) {
-                        continue;
-                    }
-                    String found = "";
-                    if (isMac() || isLinux()) found += "/dev/";
-                    found += comPort.getSystemPortName();
-                    println("ControlPanel: Found Cyton Dongle on COM port: " + found);
-                    results.add(found);
-                }
+private LinkedList<String> getCytonComPorts() {
+    final String[] names = {"FT231X USB UART", "VCP"};
+    LinkedList<String> results = new LinkedList<String>();
+
+    println("ControlPanel: getCytonComPorts() isLinux()=" + isLinux() + " isMac()=" + isMac());
+
+    // 1) Normal enumeration via jSerialComm (real dongles)
+    final SerialPort[] comPorts = SerialPort.getCommPorts();
+    println("ControlPanel: jSerialComm getCommPorts() count=" + comPorts.length);
+
+    for (SerialPort comPort : comPorts) {
+        final String sysName = comPort.getSystemPortName();
+        final String desc = comPort.toString();
+
+        println("ControlPanel: jSerialComm port sysName=" + sysName + " desc=" + desc);
+
+        boolean matchesDongle = false;
+        for (String name : names) {
+            if (desc != null && desc.startsWith(name)) {
+                matchesDongle = true;
+                break;
             }
         }
+        if (!matchesDongle) continue;
 
-        return results;
+        if (isMac() && sysName != null && sysName.startsWith("tty")) continue;
+
+        String found = "";
+        if (isMac() || isLinux()) found += "/dev/";
+        found += sysName;
+
+        println("ControlPanel: Found Cyton Dongle on port: " + found);
+        results.add(found);
     }
+
+    // 2) Linux: add tty0tty ports by scanning /dev directly
+    if (isLinux()) {
+        int added = 0;
+        try {
+            java.io.File dev = new java.io.File("/dev");
+            String[] devList = dev.list();
+            if (devList != null) {
+                for (String n : devList) {
+                    if (n != null && n.startsWith("tnt2")) {
+                        String path = "/dev/" + n;
+                        if (!results.contains(path)) {
+                            results.add(path);
+                            added++;
+                            println("ControlPanel: Added VIRTUAL tty0tty port: " + path);
+                        }
+                    }
+                }
+            } else {
+                println("ControlPanel: /dev listing returned null (unexpected)");
+            }
+        } catch (Exception e) {
+            println("ControlPanel: Error scanning /dev: " + e);
+        }
+        println("ControlPanel: /dev scan added " + added + " tnt* ports");
+    }
+
+    println("ControlPanel: getCytonComPorts() returning " + results.size() + " ports");
+    return results;
+}
 
     public boolean isAutoScanningForCytonSerial() {
         return midAutoScan;
@@ -3020,5 +3062,3 @@ class InitBox {
         initSystemButton.getCaptionLabel().setText(text);
     }
 };
-
-
